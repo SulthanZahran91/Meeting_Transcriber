@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 import types
 
@@ -104,6 +105,10 @@ def test_load_translation_model_retries_snapshot_cache_error(monkeypatch) -> Non
     )
     monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
     monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hf_hub)
+    monkeypatch.setattr(
+        "meeting_transcriber.translate._translation_model_dir",
+        lambda _model_name: Path("/tmp/translation-model"),
+    )
     translate.clear_translation_cache()
 
     translate._load_translation_model(  # type: ignore[attr-defined]
@@ -113,4 +118,11 @@ def test_load_translation_model_retries_snapshot_cache_error(monkeypatch) -> Non
 
     assert _FakeTokenizer.calls == 2
     assert _FakeModel.calls == 1
-    assert snapshot_calls == [{"repo_id": "demo/model", "force_download": True}]
+    assert snapshot_calls == [
+        {
+            "repo_id": "demo/model",
+            "local_dir": "/tmp/translation-model",
+            "force_download": True,
+            "local_files_only": False,
+        }
+    ]

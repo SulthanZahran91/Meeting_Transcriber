@@ -119,11 +119,25 @@ def _refresh_whisper_snapshot(model_name: str) -> str | None:
     if repo_id is None:
         return None
 
+    model_dir = _whisper_model_dir(model_name)
+    model_dir.mkdir(parents=True, exist_ok=True)
+
     try:
         from huggingface_hub import snapshot_download
     except Exception:
         return None
-    return snapshot_download(repo_id=repo_id, force_download=True)
+    snapshot_download(
+        repo_id=repo_id,
+        local_dir=str(model_dir),
+        force_download=True,
+        local_files_only=False,
+    )
+    return str(model_dir)
+
+
+def _whisper_model_dir(model_name: str) -> Path:
+    safe_name = model_name.replace("/", "--")
+    return Path.home() / ".cache" / "meeting-transcriber" / "models" / safe_name
 
 
 def _resolve_whisper_repo_id(model_name: str) -> str | None:

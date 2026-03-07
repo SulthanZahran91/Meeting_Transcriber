@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
@@ -147,11 +148,23 @@ def _load_translation_model_once(
 
 
 def _refresh_hf_snapshot(model_name: str) -> None:
+    model_dir = _translation_model_dir(model_name)
+    model_dir.mkdir(parents=True, exist_ok=True)
     try:
         from huggingface_hub import snapshot_download
     except Exception:
         return
-    snapshot_download(repo_id=model_name, force_download=True)
+    snapshot_download(
+        repo_id=model_name,
+        local_dir=str(model_dir),
+        force_download=True,
+        local_files_only=False,
+    )
+
+
+def _translation_model_dir(model_name: str) -> Path:
+    safe_name = model_name.replace("/", "--")
+    return Path.home() / ".cache" / "meeting-transcriber" / "models" / safe_name
 
 
 def _is_hf_snapshot_cache_error(exc: Exception) -> bool:

@@ -31,7 +31,7 @@ def test_whisper_model_load_cached(monkeypatch, tmp_path: Path) -> None:
     assert calls["init"] == 1
 
 
-def test_whisper_model_refreshes_stale_snapshot_cache(monkeypatch) -> None:
+def test_whisper_model_refreshes_stale_snapshot_cache(monkeypatch, tmp_path: Path) -> None:
     calls: list[dict[str, object]] = []
     snapshot_calls: list[dict[str, object]] = []
 
@@ -54,13 +54,22 @@ def test_whisper_model_refreshes_stale_snapshot_cache(monkeypatch) -> None:
     )
     monkeypatch.setitem(sys.modules, "faster_whisper", fake_whisper_module)
     monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hf_hub)
+    monkeypatch.setattr(
+        "meeting_transcriber.transcribe._whisper_model_dir",
+        lambda _model_name: tmp_path / "tiny",
+    )
     _MODEL_CACHE.clear()
 
     cfg = TranscriberConfig(whisper_model="tiny", device="cpu", compute_type="int8")
     _load_model(cfg, console=Console(record=True))
 
     assert calls[0]["model_size_or_path"] == "tiny"
-    assert calls[1]["model_size_or_path"] == "/tmp/whisper-model"
+    assert calls[1]["model_size_or_path"] == str(tmp_path / "tiny")
     assert snapshot_calls == [
-        {"repo_id": "Systran/faster-whisper-tiny", "force_download": True}
+        {
+            "repo_id": "Systran/faster-whisper-tiny",
+            "local_dir": str(tmp_path / "tiny"),
+            "force_download": True,
+            "local_files_only": False,
+        }
     ]
