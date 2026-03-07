@@ -99,6 +99,17 @@ def _load_whisper_model_once(
         if not _is_hf_snapshot_cache_error(exc):
             raise
 
+        model_dir = _whisper_model_dir(model_name)
+        if _has_local_model_artifacts(model_dir):
+            console.print(
+                f"[yellow]Using local ASR model cache at {model_dir} (offline fallback).[/yellow]"
+            )
+            return whisper_model_cls(
+                model_size_or_path=str(model_dir),
+                device=device,
+                compute_type=compute_type,
+            )
+
         console.print(
             "[yellow]Detected stale ASR model cache. "
             "Refreshing Hugging Face snapshot and retrying once...[/yellow]"
@@ -138,6 +149,10 @@ def _refresh_whisper_snapshot(model_name: str) -> str | None:
 def _whisper_model_dir(model_name: str) -> Path:
     safe_name = model_name.replace("/", "--")
     return Path.home() / ".cache" / "meeting-transcriber" / "models" / safe_name
+
+
+def _has_local_model_artifacts(model_dir: Path) -> bool:
+    return model_dir.exists() and any(model_dir.iterdir())
 
 
 def _resolve_whisper_repo_id(model_name: str) -> str | None:

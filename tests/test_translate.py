@@ -65,14 +65,15 @@ def test_translate_skips_whitespace_segments(monkeypatch) -> None:
     assert [item.english for item in out] == ["", "", "EN:정상"]
 
 
-def test_load_translation_model_retries_snapshot_cache_error(monkeypatch) -> None:
+def test_load_translation_model_retries_snapshot_cache_error(monkeypatch, tmp_path: Path) -> None:
     snapshot_calls: list[dict[str, object]] = []
+    model_dir = tmp_path / "translation-model"
 
     class _FakeTokenizer:
         calls = 0
 
         @classmethod
-        def from_pretrained(cls, *_args: object, **kwargs: object) -> object:
+        def from_pretrained(cls, *args: object, **kwargs: object) -> object:
             cls.calls += 1
             if cls.calls == 1:
                 raise RuntimeError(
@@ -80,7 +81,8 @@ def test_load_translation_model_retries_snapshot_cache_error(monkeypatch) -> Non
                     "we cannot find the appropriate snapshot folder for the specified "
                     "revision on the local disk."
                 )
-            assert kwargs.get("force_download") is True
+            assert args[0] == str(model_dir)
+            assert kwargs.get("local_files_only") is True
             return object()
 
     class _FakeLoadedModel:
@@ -91,9 +93,10 @@ def test_load_translation_model_retries_snapshot_cache_error(monkeypatch) -> Non
         calls = 0
 
         @classmethod
-        def from_pretrained(cls, *_args: object, **kwargs: object) -> _FakeLoadedModel:
+        def from_pretrained(cls, *args: object, **kwargs: object) -> _FakeLoadedModel:
             cls.calls += 1
-            assert kwargs.get("force_download") is True
+            assert args[0] == str(model_dir)
+            assert kwargs.get("local_files_only") is True
             return _FakeLoadedModel()
 
     fake_transformers = types.SimpleNamespace(
@@ -107,7 +110,7 @@ def test_load_translation_model_retries_snapshot_cache_error(monkeypatch) -> Non
     monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hf_hub)
     monkeypatch.setattr(
         "meeting_transcriber.translate._translation_model_dir",
-        lambda _model_name: Path("/tmp/translation-model"),
+        lambda _model_name: model_dir,
     )
     translate.clear_translation_cache()
 
@@ -121,8 +124,71 @@ def test_load_translation_model_retries_snapshot_cache_error(monkeypatch) -> Non
     assert snapshot_calls == [
         {
             "repo_id": "demo/model",
-            "local_dir": "/tmp/translation-model",
+            "local_dir": str(model_dir),
             "force_download": True,
             "local_files_only": False,
         }
     ]
+
+
+def test_load_translation_model_uses_local_cache_when_hub_blocked(
+    monkeypatch, tmp_path: Path
+) -> None:
+    model_dir = tmp_path / "translation-model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+
+    class _FakeTokenizer:
+        calls = 0
+
+        @classmethod
+        def from_pretrained(cls, *args: object, **kwargs: object) -> object:
+            cls.calls += 1
+            if cls.calls == 1:
+                raise RuntimeError(
+                    "An error happened while trying to locate the files on the Hub and "
+                    "we cannot find the appropriate snapshot folder for the specified "
+                    "revision on the local disk."
+                )
+            assert args[0] == str(model_dir)
+            assert kwargs.get("local_files_only") is True
+            return object()
+
+    class _FakeLoadedModel:
+        def eval(self) -> None:
+            return None
+
+    class _FakeModel:
+        calls = 0
+
+        @classmethod
+        def from_pretrained(cls, *args: object, **kwargs: object) -> _FakeLoadedModel:
+            cls.calls += 1
+            assert args[0] == str(model_dir)
+            assert kwargs.get("local_files_only") is True
+            return _FakeLoadedModel()
+
+    fake_transformers = types.SimpleNamespace(
+        MarianTokenizer=_FakeTokenizer,
+        MarianMTModel=_FakeModel,
+    )
+    fake_hf_hub = types.SimpleNamespace(
+        snapshot_download=lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("snapshot_download should not be called")
+        )
+    )
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hf_hub)
+    monkeypatch.setattr(
+        "meeting_transcriber.translate._translation_model_dir",
+        lambda _model_name: model_dir,
+    )
+    translate.clear_translation_cache()
+
+    translate._load_translation_model(  # type: ignore[attr-defined]
+        TranscriberConfig(translation_model="demo/model"),
+        console=Console(record=True),
+    )
+
+    assert _FakeTokenizer.calls == 2
+    assert _FakeModel.calls == 1

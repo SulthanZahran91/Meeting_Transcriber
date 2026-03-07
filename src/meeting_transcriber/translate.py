@@ -136,14 +136,24 @@ def _load_translation_model_once(
         if not _is_hf_snapshot_cache_error(exc):
             raise
 
+        model_dir = _translation_model_dir(model_name)
+        if _has_local_model_artifacts(model_dir):
+            console.print(
+                f"[yellow]Using local translation model cache at {model_dir} (offline fallback).[/yellow]"
+            )
+            tokenizer = tokenizer_cls.from_pretrained(str(model_dir), local_files_only=True)
+            model = model_cls.from_pretrained(str(model_dir), local_files_only=True)
+            return tokenizer, model
+
         console.print(
             "[yellow]Detected stale translation model cache. "
             "Refreshing Hugging Face snapshot and retrying once...[/yellow]"
         )
         _refresh_hf_snapshot(model_name=model_name)
 
-        tokenizer = tokenizer_cls.from_pretrained(model_name, force_download=True)
-        model = model_cls.from_pretrained(model_name, force_download=True)
+        model_dir = _translation_model_dir(model_name)
+        tokenizer = tokenizer_cls.from_pretrained(str(model_dir), local_files_only=True)
+        model = model_cls.from_pretrained(str(model_dir), local_files_only=True)
         return tokenizer, model
 
 
@@ -165,6 +175,10 @@ def _refresh_hf_snapshot(model_name: str) -> None:
 def _translation_model_dir(model_name: str) -> Path:
     safe_name = model_name.replace("/", "--")
     return Path.home() / ".cache" / "meeting-transcriber" / "models" / safe_name
+
+
+def _has_local_model_artifacts(model_dir: Path) -> bool:
+    return model_dir.exists() and any(model_dir.iterdir())
 
 
 def _is_hf_snapshot_cache_error(exc: Exception) -> bool:
