@@ -114,3 +114,43 @@ def test_batch_empty_directory_is_error(monkeypatch, tmp_path: Path) -> None:
 
     assert result.exit_code == 1
 
+
+def test_batch_directory_processes_all_files(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "a.wav").write_bytes(b"a")
+    (tmp_path / "b.mp3").write_bytes(b"b")
+    calls: list[Path] = []
+
+    monkeypatch.setattr(
+        cli,
+        "detect_hardware",
+        lambda: HardwareProfile(
+            device="cpu",
+            gpu_name=None,
+            gpu_vram_gb=None,
+            ram_gb=16.0,
+            cpu_name="cpu",
+            cpu_cores=8,
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "recommend_config",
+        lambda *args, **kwargs: ModelRecommendation(
+            whisper_model="medium",
+            device="cpu",
+            compute_type="int8",
+            beam_size=5,
+            reason="ok",
+        ),
+    )
+    monkeypatch.setattr(cli, "print_hardware_summary", lambda *args, **kwargs: None)
+
+    def fake_process(input_path: Path, config: TranscriberConfig, no_translate: bool) -> Path:
+        calls.append(input_path)
+        return tmp_path / f"{input_path.stem}.html"
+
+    monkeypatch.setattr(cli, "_process_one_file", fake_process)
+    result = runner.invoke(cli.app, ["transcribe", "--batch", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert sorted(path.name for path in calls) == ["a.wav", "b.mp3"]

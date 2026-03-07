@@ -1,5 +1,6 @@
 from meeting_transcriber.hardware import (
     HardwareProfile,
+    detect_hardware,
     recommend_config,
 )
 
@@ -45,3 +46,17 @@ def test_force_device_cpu_on_cuda_machine() -> None:
     assert rec.device == "cpu"
     assert rec.compute_type == "int8"
 
+
+def test_detect_hardware_without_torch(monkeypatch) -> None:
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "torch":
+            raise ImportError("torch not installed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    hw = detect_hardware()
+    assert hw.device == "cpu"

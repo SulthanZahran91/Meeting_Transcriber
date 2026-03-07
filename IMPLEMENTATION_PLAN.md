@@ -282,14 +282,14 @@ Target: Fully offline Korean meeting transcription + English translation CLI, CP
 - [x] Timestamp formatting and output writers.
 
 ### Integration Tests
-- [ ] Audio extraction integration with short fixture media.
+- [x] Audio extraction integration with short fixture media.
 - [x] CLI smoke test through full pipeline with mocked models.
-- [ ] Batch processing integration with 2+ fixture files.
+- [x] Batch processing integration with 2+ fixture files.
 
 ### Regression Fixtures
-- [ ] Add small Korean sample transcript fixture.
-- [ ] Add representative glossary fixture.
-- [ ] Add expected output snapshots for html/md/srt.
+- [x] Add small Korean sample transcript fixture.
+- [x] Add representative glossary fixture.
+- [x] Add expected output snapshots for html/md/srt.
 
 ### Test Execution
 - [x] Define one command for local validation (`uv run ...`).
@@ -298,35 +298,35 @@ Target: Fully offline Korean meeting transcription + English translation CLI, CP
 ## 13) Performance Validation
 
 ### Baseline Measurements
-- [ ] Measure model load time (ASR + MT).
+- [x] Measure model load time (ASR + MT).
 - [ ] Measure transcription throughput on 5-10 minute sample.
-- [ ] Measure translation throughput with batch sizes 8, 12, 16.
-- [ ] Validate VAD impact on runtime.
+- [x] Measure translation throughput with batch sizes 8, 12, 16.
+- [x] Validate VAD impact on runtime.
 
 ### Tuning Decisions
-- [ ] Select default translation batch size for CPU balance.
+- [x] Select default translation batch size for CPU balance.
 - [ ] Confirm CPU `int8` defaults avoid OOM on 16GB RAM.
 - [ ] Validate GPU `float16` path where available.
 
 ### Acceptance Targets
 - [ ] Runtime behavior is within expected spec ranges.
-- [ ] No repeated model loads in batch mode.
-- [ ] No unbounded memory growth in long runs.
+- [x] No repeated model loads in batch mode.
+- [x] No unbounded memory growth in long runs.
 
 ## 14) Documentation and UX
 
 ### README Content
 - [x] Installation with `uv`.
-- [ ] ffmpeg prerequisite and install instructions by OS.
+- [x] ffmpeg prerequisite and install instructions by OS.
 - [x] Quickstart examples (single file and batch).
-- [ ] Hardware auto-selection explanation.
-- [ ] Troubleshooting section (OOM, CUDA issues, model download).
-- [ ] Output examples (html/md/srt).
+- [x] Hardware auto-selection explanation.
+- [x] Troubleshooting section (OOM, CUDA issues, model download).
+- [x] Output examples (html/md/srt).
 
 ### User Assets
 - [x] Provide default `glossary.json` with sample corrections.
-- [ ] Document how to customize glossary safely.
-- [ ] Clarify offline behavior after first model download.
+- [x] Document how to customize glossary safely.
+- [x] Clarify offline behavior after first model download.
 
 ## 15) Delivery Sequence (Recommended Order)
 

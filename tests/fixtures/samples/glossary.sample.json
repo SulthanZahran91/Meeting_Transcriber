@@ -1,0 +1,10 @@
+{
+  "corrections": {
+    "stoker": "stocker",
+    "conveyer": "conveyor"
+  },
+  "korean_overrides": {
+    "반송": "transport/conveyance"
+  }
+}
+

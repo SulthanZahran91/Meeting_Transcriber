@@ -97,7 +97,13 @@ def _load_translation_model(
 
     with console.status(f"Loading translation model '{config.translation_model}'..."):
         tokenizer = MarianTokenizer.from_pretrained(config.translation_model)
-        model = MarianMTModel.from_pretrained(config.translation_model)
+        try:
+            model = MarianMTModel.from_pretrained(config.translation_model)
+        except ImportError as exc:
+            raise RuntimeError(
+                "Translation backend requires PyTorch. Install it with "
+                "`uv sync --extra gpu` and retry."
+            ) from exc
         model.eval()
 
     _TRANSLATION_CACHE[config.translation_model] = (tokenizer, model)
@@ -129,4 +135,3 @@ def _run_translation_batch(tokenizer: object, model: object, inputs: list[str]) 
         generated = model.generate(**encoded)
 
     return tokenizer.batch_decode(generated, skip_special_tokens=True)
-
