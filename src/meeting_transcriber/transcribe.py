@@ -3,8 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import wave
 
 from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from meeting_transcriber.config import TranscriberConfig
 
@@ -38,13 +40,47 @@ def transcribe(
     except Exception as exc:
         raise RuntimeError(_humanize_asr_error(exc)) from exc
 
+    audio_duration = _read_wav_duration_seconds(audio_path)
+
     collected: list[Segment] = []
-    for idx, part in enumerate(segments_iter, start=1):
-        text = (part.text or "").strip()
-        if text:
-            collected.append(Segment(start=float(part.start), end=float(part.end), text=text))
-        if idx % 50 == 0:
-            console.print(f"[cyan]Transcribed {idx} segments...[/cyan]")
+    if audio_duration is not None and audio_duration > 0:
+        progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.percentage:>5.1f}%"),
+            TextColumn("{task.fields[current]}/{task.fields[total_label]}"),
+            TimeElapsedColumn(),
+            console=console,
+        )
+        with progress:
+            task = progress.add_task(
+                "Transcribing",
+                total=audio_duration,
+                completed=0.0,
+                current="00:00",
+                total_label=_format_mmss(audio_duration),
+            )
+            for part in segments_iter:
+                text = (part.text or "").strip()
+                if text:
+                    collected.append(
+                        Segment(start=float(part.start), end=float(part.end), text=text)
+                    )
+                current = min(audio_duration, float(part.end))
+                progress.update(task, completed=current, current=_format_mmss(current))
+            progress.update(
+                task,
+                completed=audio_duration,
+                current=_format_mmss(audio_duration),
+            )
+    else:
+        for idx, part in enumerate(segments_iter, start=1):
+            text = (part.text or "").strip()
+            if text:
+                collected.append(Segment(start=float(part.start), end=float(part.end), text=text))
+            if idx % 50 == 0:
+                console.print(f"[cyan]Transcribed {idx} segments...[/cyan]")
     return collected
 
 
@@ -195,3 +231,22 @@ def _humanize_asr_error(exc: Exception) -> str:
             "If it persists, clear local Hugging Face cache and retry."
         )
     return f"ASR failed: {message}"
+
+
+def _read_wav_duration_seconds(audio_path: Path) -> float | None:
+    try:
+        with wave.open(str(audio_path), "rb") as wav_file:
+            frames = wav_file.getnframes()
+            rate = wav_file.getframerate()
+            if rate <= 0:
+                return None
+            return frames / float(rate)
+    except Exception:
+        return None
+
+
+def _format_mmss(seconds: float) -> str:
+    total_seconds = max(0, int(seconds))
+    minutes = total_seconds // 60
+    remain = total_seconds % 60
+    return f"{minutes:02d}:{remain:02d}"

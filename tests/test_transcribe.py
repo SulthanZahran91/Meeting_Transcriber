@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import wave
 
 import pytest
 from rich.console import Console
@@ -71,3 +72,32 @@ def test_transcribe_oom_message_is_humanized(monkeypatch, tmp_path: Path) -> Non
             ),
         )
 
+
+def test_transcribe_shows_timeline_progress_for_wav(monkeypatch, tmp_path: Path) -> None:
+    audio = tmp_path / "audio.wav"
+    with wave.open(str(audio), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(16000)
+        wav_file.writeframes(b"\x00\x00" * 32000)  # 2 seconds
+
+    segments = [
+        _FakeWhisperSegment(0.0, 1.0, "하나"),
+        _FakeWhisperSegment(1.0, 2.0, "둘"),
+    ]
+    monkeypatch.setattr(
+        "meeting_transcriber.transcribe._load_model",
+        lambda *_args, **_kwargs: _FakeWhisperModel(segments),
+    )
+    console = Console(record=True)
+
+    out = transcribe(
+        audio,
+        TranscriberConfig(whisper_model="tiny", device="cpu", compute_type="int8", beam_size=1),
+        console=console,
+    )
+
+    rendered = console.export_text()
+    assert len(out) == 2
+    assert "Transcribing" in rendered
+    assert "00:02" in rendered
