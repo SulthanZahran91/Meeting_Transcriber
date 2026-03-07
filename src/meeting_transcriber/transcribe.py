@@ -68,13 +68,81 @@ def _load_model(config: TranscriberConfig, console: Console) -> object:
     with console.status(
         f"Loading Whisper model '{config.whisper_model}' on {config.device}..."
     ):
-        model = WhisperModel(
-            model_size_or_path=config.whisper_model,
-            device=config.device,
-            compute_type=config.compute_type,
-        )
+        try:
+            model = _load_whisper_model_once(
+                whisper_model_cls=WhisperModel,
+                model_name=config.whisper_model,
+                device=config.device,
+                compute_type=config.compute_type,
+                console=console,
+            )
+        except Exception as exc:
+            raise RuntimeError(_humanize_asr_error(exc)) from exc
     _MODEL_CACHE[key] = model
     return model
+
+
+def _load_whisper_model_once(
+    whisper_model_cls: object,
+    model_name: str,
+    device: str,
+    compute_type: str,
+    console: Console,
+) -> object:
+    try:
+        return whisper_model_cls(
+            model_size_or_path=model_name,
+            device=device,
+            compute_type=compute_type,
+        )
+    except Exception as exc:
+        if not _is_hf_snapshot_cache_error(exc):
+            raise
+
+        console.print(
+            "[yellow]Detected stale ASR model cache. "
+            "Refreshing Hugging Face snapshot and retrying once...[/yellow]"
+        )
+        snapshot_path = _refresh_whisper_snapshot(model_name=model_name)
+        if snapshot_path is None:
+            raise
+
+        return whisper_model_cls(
+            model_size_or_path=snapshot_path,
+            device=device,
+            compute_type=compute_type,
+        )
+
+
+def _refresh_whisper_snapshot(model_name: str) -> str | None:
+    repo_id = _resolve_whisper_repo_id(model_name)
+    if repo_id is None:
+        return None
+
+    try:
+        from huggingface_hub import snapshot_download
+    except Exception:
+        return None
+    return snapshot_download(repo_id=repo_id, force_download=True)
+
+
+def _resolve_whisper_repo_id(model_name: str) -> str | None:
+    supported = {"tiny", "small", "medium", "large-v3"}
+    if model_name not in supported:
+        return None
+    return f"Systran/faster-whisper-{model_name}"
+
+
+def _is_hf_snapshot_cache_error(exc: Exception) -> bool:
+    lowered = str(exc).lower()
+    return (
+        "snapshot folder" in lowered
+        or (
+            "locate the files on the hub" in lowered
+            and "local disk" in lowered
+            and "revision" in lowered
+        )
+    )
 
 
 def _humanize_asr_error(exc: Exception) -> str:
@@ -91,5 +159,10 @@ def _humanize_asr_error(exc: Exception) -> str:
             f"ASR model download failed: {message}. "
             "Retry once network is available or preload model cache."
         )
+    if _is_hf_snapshot_cache_error(exc):
+        return (
+            f"ASR model cache is incomplete/corrupted: {message}. "
+            "Retry once with internet access to refresh cache. "
+            "If it persists, clear local Hugging Face cache and retry."
+        )
     return f"ASR failed: {message}"
-
