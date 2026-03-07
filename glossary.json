@@ -1,0 +1,14 @@
+{
+  "corrections": {
+    "stoker": "stocker",
+    "conveyer": "conveyor",
+    "OHT": "OHT",
+    "amhs": "AMHS",
+    "ochang": "Ochang"
+  },
+  "korean_overrides": {
+    "스토커": "stocker",
+    "반송": "transport/conveyance"
+  }
+}
+
