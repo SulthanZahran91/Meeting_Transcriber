@@ -96,8 +96,8 @@ Target: Fully offline Korean meeting transcription + English translation CLI, CP
 - [x] Render recommendation panel via Rich.
 
 ### Test Checklist
-- [ ] Unit tests for matrix mapping boundaries (exact 4/6/8/10/12/24 GB thresholds).
-- [ ] Unit tests for override precedence (`force_model`, `force_device`, both).
+- [x] Unit tests for matrix mapping boundaries (exact 4/6/8/10/12/24 GB thresholds).
+- [x] Unit tests for override precedence (`force_model`, `force_device`, both).
 - [ ] Unit tests for no-torch environment fallback.
 
 ## 5) Audio Extraction Module (`extract.py`)
@@ -137,7 +137,7 @@ Target: Fully offline Korean meeting transcription + English translation CLI, CP
 - [ ] Keep API simple for single-file and multi-file reuse.
 
 ### Test Checklist
-- [ ] Unit tests with mocked Whisper output generator.
+- [x] Unit tests with mocked Whisper output generator.
 - [ ] Unit tests for progress logging every 50 segments.
 - [ ] Error translation tests for OOM guidance text.
 
@@ -175,10 +175,10 @@ Target: Fully offline Korean meeting transcription + English translation CLI, CP
 - [ ] Ensure acronym casing outcomes are deterministic.
 
 ### Test Checklist
-- [ ] Unit tests for case-insensitive corrections.
-- [ ] Unit tests for word-boundary safety (no partial-word corruption).
+- [x] Unit tests for case-insensitive corrections.
+- [x] Unit tests for word-boundary safety (no partial-word corruption).
 - [ ] Unit tests for Korean override precedence over base translation text.
-- [ ] Unit tests verifying immutability (input unchanged).
+- [x] Unit tests verifying immutability (input unchanged).
 
 ## 9) Formatter Module (`formatter.py`)
 
@@ -213,9 +213,9 @@ Target: Fully offline Korean meeting transcription + English translation CLI, CP
 - [x] Ensure sequential numbering and valid timing format.
 
 ### Test Checklist
-- [ ] Unit tests for timestamp formatting (including millisecond rounding).
-- [ ] Golden-file tests for html/markdown/srt outputs.
-- [ ] Verify unicode Korean text is preserved.
+- [x] Unit tests for timestamp formatting (including millisecond rounding).
+- [x] Golden-file tests for html/markdown/srt outputs.
+- [x] Verify unicode Korean text is preserved.
 
 ## 10) CLI Orchestration (`cli.py`)
 
@@ -253,9 +253,9 @@ Target: Fully offline Korean meeting transcription + English translation CLI, CP
 - [x] Per-file success/failure reporting and final batch summary.
 
 ### Test Checklist
-- [ ] CLI help snapshot test.
-- [ ] Single-file command test with mocked internals.
-- [ ] `--show-hardware` exit-path test.
+- [x] CLI help snapshot test.
+- [x] Single-file command test with mocked internals.
+- [x] `--show-hardware` exit-path test.
 - [ ] Batch mode test verifying one-time model load.
 
 ## 11) Error Handling and Recovery
@@ -276,14 +276,14 @@ Target: Fully offline Korean meeting transcription + English translation CLI, CP
 ## 12) Testing Strategy
 
 ### Unit Tests
-- [ ] Hardware detection/recommendation logic (mocked environments).
-- [ ] Config resolution and override precedence.
-- [ ] Glossary replacement correctness and immutability.
-- [ ] Timestamp formatting and output writers.
+- [x] Hardware detection/recommendation logic (mocked environments).
+- [x] Config resolution and override precedence.
+- [x] Glossary replacement correctness and immutability.
+- [x] Timestamp formatting and output writers.
 
 ### Integration Tests
 - [ ] Audio extraction integration with short fixture media.
-- [ ] CLI smoke test through full pipeline with mocked models.
+- [x] CLI smoke test through full pipeline with mocked models.
 - [ ] Batch processing integration with 2+ fixture files.
 
 ### Regression Fixtures
@@ -292,8 +292,8 @@ Target: Fully offline Korean meeting transcription + English translation CLI, CP
 - [ ] Add expected output snapshots for html/md/srt.
 
 ### Test Execution
-- [ ] Define one command for local validation (`uv run ...`).
-- [ ] Ensure tests pass on CPU-only environment.
+- [x] Define one command for local validation (`uv run ...`).
+- [x] Ensure tests pass on CPU-only environment.
 
 ## 13) Performance Validation
 

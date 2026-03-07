@@ -27,3 +27,8 @@ meeting-transcriber = "meeting_transcriber.cli:app"
 [tool.hatch.build.targets.wheel]
 packages = ["src/meeting_transcriber"]
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
