@@ -96,18 +96,92 @@ def _load_translation_model(
         ) from exc
 
     with console.status(f"Loading translation model '{config.translation_model}'..."):
-        tokenizer = MarianTokenizer.from_pretrained(config.translation_model)
         try:
-            model = MarianMTModel.from_pretrained(config.translation_model)
+            tokenizer, model = _load_translation_model_once(
+                model_name=config.translation_model,
+                tokenizer_cls=MarianTokenizer,
+                model_cls=MarianMTModel,
+                console=console,
+            )
         except ImportError as exc:
             raise RuntimeError(
                 "Translation backend requires PyTorch. Install it with "
                 "`uv sync --extra gpu` and retry."
             ) from exc
+        except Exception as exc:
+            raise RuntimeError(
+                _humanize_translation_error(
+                    exc=exc,
+                    model_name=config.translation_model,
+                )
+            ) from exc
         model.eval()
 
     _TRANSLATION_CACHE[config.translation_model] = (tokenizer, model)
     return tokenizer, model
+
+
+def _load_translation_model_once(
+    model_name: str,
+    tokenizer_cls: object,
+    model_cls: object,
+    console: Console,
+) -> tuple[object, object]:
+    try:
+        tokenizer = tokenizer_cls.from_pretrained(model_name)
+        model = model_cls.from_pretrained(model_name)
+        return tokenizer, model
+    except Exception as exc:
+        if not _is_hf_snapshot_cache_error(exc):
+            raise
+
+        console.print(
+            "[yellow]Detected stale translation model cache. "
+            "Refreshing Hugging Face snapshot and retrying once...[/yellow]"
+        )
+        _refresh_hf_snapshot(model_name=model_name)
+
+        tokenizer = tokenizer_cls.from_pretrained(model_name, force_download=True)
+        model = model_cls.from_pretrained(model_name, force_download=True)
+        return tokenizer, model
+
+
+def _refresh_hf_snapshot(model_name: str) -> None:
+    try:
+        from huggingface_hub import snapshot_download
+    except Exception:
+        return
+    snapshot_download(repo_id=model_name, force_download=True)
+
+
+def _is_hf_snapshot_cache_error(exc: Exception) -> bool:
+    lowered = str(exc).lower()
+    return (
+        "snapshot folder" in lowered
+        or (
+            "locate the files on the hub" in lowered
+            and "local disk" in lowered
+            and "revision" in lowered
+        )
+    )
+
+
+def _humanize_translation_error(exc: Exception, model_name: str) -> str:
+    message = str(exc)
+    lowered = message.lower()
+    if "download" in lowered or "network" in lowered or "connection" in lowered:
+        return (
+            f"Translation model download failed for '{model_name}': {message}. "
+            "Check internet access and retry once to populate cache. "
+            "You can continue without translation via `--no-translate`."
+        )
+    if _is_hf_snapshot_cache_error(exc):
+        return (
+            f"Translation model cache is incomplete/corrupted for '{model_name}': {message}. "
+            "Retry once with internet access to refresh cache. "
+            "If it persists, clear local Hugging Face cache and retry."
+        )
+    return f"Translation failed: {message}"
 
 
 def clear_translation_cache() -> None:

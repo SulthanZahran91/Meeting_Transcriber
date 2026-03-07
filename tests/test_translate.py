@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import sys
+import types
+
 from meeting_transcriber.config import TranscriberConfig
 from meeting_transcriber.transcribe import Segment
+from meeting_transcriber import translate
 from meeting_transcriber.translate import translate_segments
+from rich.console import Console
 
 
 def test_translate_batches_and_keeps_alignment(monkeypatch) -> None:
@@ -58,3 +63,54 @@ def test_translate_skips_whitespace_segments(monkeypatch) -> None:
 
     assert [item.english for item in out] == ["", "", "EN:정상"]
 
+
+def test_load_translation_model_retries_snapshot_cache_error(monkeypatch) -> None:
+    snapshot_calls: list[dict[str, object]] = []
+
+    class _FakeTokenizer:
+        calls = 0
+
+        @classmethod
+        def from_pretrained(cls, *_args: object, **kwargs: object) -> object:
+            cls.calls += 1
+            if cls.calls == 1:
+                raise RuntimeError(
+                    "An error happened while trying to locate the files on the Hub and "
+                    "we cannot find the appropriate snapshot folder for the specified "
+                    "revision on the local disk."
+                )
+            assert kwargs.get("force_download") is True
+            return object()
+
+    class _FakeLoadedModel:
+        def eval(self) -> None:
+            return None
+
+    class _FakeModel:
+        calls = 0
+
+        @classmethod
+        def from_pretrained(cls, *_args: object, **kwargs: object) -> _FakeLoadedModel:
+            cls.calls += 1
+            assert kwargs.get("force_download") is True
+            return _FakeLoadedModel()
+
+    fake_transformers = types.SimpleNamespace(
+        MarianTokenizer=_FakeTokenizer,
+        MarianMTModel=_FakeModel,
+    )
+    fake_hf_hub = types.SimpleNamespace(
+        snapshot_download=lambda **kwargs: snapshot_calls.append(kwargs)
+    )
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hf_hub)
+    translate.clear_translation_cache()
+
+    translate._load_translation_model(  # type: ignore[attr-defined]
+        TranscriberConfig(translation_model="demo/model"),
+        console=Console(record=True),
+    )
+
+    assert _FakeTokenizer.calls == 2
+    assert _FakeModel.calls == 1
+    assert snapshot_calls == [{"repo_id": "demo/model", "force_download": True}]
