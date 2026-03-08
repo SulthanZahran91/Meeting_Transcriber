@@ -43,6 +43,7 @@ uv sync --extra gpu
 ```
 
 Note: translation currently requires PyTorch. If PyTorch is missing, run with `--no-translate` or install the extra above.
+ASR hardware auto-detection checks PyTorch first and falls back to `nvidia-smi` on NVIDIA systems, so `auto` can still pick CUDA for Whisper-only runs.
 
 ## Quickstart
 
@@ -145,6 +146,10 @@ Edit `glossary.json`:
 `ASR out of memory`:
 - Try `--model small` or `--model tiny`.
 - On CUDA, retry with `--device cpu`.
+
+`--show-hardware` does not detect your NVIDIA GPU:
+- Verify the NVIDIA driver is installed and `nvidia-smi` works.
+- If Whisper GPU inference works but auto-detection is still wrong, use `--device cuda`.
 
 `Translation backend requires PyTorch`:
 - Run `uv sync --extra gpu`.

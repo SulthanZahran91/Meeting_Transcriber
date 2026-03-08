@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 import platform
+import shutil
+import subprocess
 from typing import Optional
 
 import psutil
@@ -34,17 +36,10 @@ def detect_hardware() -> HardwareProfile:
     gpu_name: Optional[str] = None
     gpu_vram_gb: Optional[float] = None
 
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            props = torch.cuda.get_device_properties(0)
-            device = "cuda"
-            gpu_name = props.name
-            gpu_vram_gb = props.total_memory / (1024**3)
-    except Exception:
-        # Torch is optional and hardware detection should never crash startup.
-        pass
+    cuda_details = _detect_cuda_with_torch() or _detect_cuda_with_nvidia_smi()
+    if cuda_details is not None:
+        device = "cuda"
+        gpu_name, gpu_vram_gb = cuda_details
 
     ram_gb = psutil.virtual_memory().total / (1024**3)
     cpu_name = platform.processor() or "Unknown CPU"
@@ -58,6 +53,56 @@ def detect_hardware() -> HardwareProfile:
         cpu_name=cpu_name,
         cpu_cores=cpu_cores,
     )
+
+
+def _detect_cuda_with_torch() -> tuple[str, float] | None:
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return None
+
+        props = torch.cuda.get_device_properties(0)
+        return props.name, props.total_memory / (1024**3)
+    except Exception:
+        # Torch is optional and hardware detection should never crash startup.
+        return None
+
+
+def _detect_cuda_with_nvidia_smi() -> tuple[str, float] | None:
+    if shutil.which("nvidia-smi") is None:
+        return None
+
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=3,
+        )
+    except Exception:
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    first_line = next(
+        (line.strip() for line in result.stdout.splitlines() if line.strip()),
+        None,
+    )
+    if first_line is None:
+        return None
+
+    try:
+        gpu_name, vram_mb = [part.strip() for part in first_line.split(",", maxsplit=1)]
+        return gpu_name, float(vram_mb) / 1024.0
+    except (TypeError, ValueError):
+        return None
 
 
 def recommend_config(
@@ -174,4 +219,3 @@ def _risk_warning(
             "Consider --model small/tiny."
         )
     return None
-
