@@ -11,6 +11,33 @@ from meeting_transcriber.translate import translate_segments
 from rich.console import Console
 
 
+def test_build_translation_messages_uses_three_segments_of_context() -> None:
+    segments = [
+        Segment(0.0, 1.0, "영"),
+        Segment(1.0, 2.0, "일"),
+        Segment(2.0, 3.0, "이"),
+        Segment(3.0, 4.0, "삼"),
+        Segment(4.0, 5.0, "사"),
+        Segment(5.0, 6.0, "오"),
+        Segment(6.0, 7.0, "육"),
+        Segment(7.0, 8.0, "칠"),
+        Segment(8.0, 9.0, "팔"),
+    ]
+
+    messages = translate._build_translation_messages(segments, target_index=4, context_window=3)
+    user_prompt = messages[1]["content"]
+
+    assert "CTX-3: 일" in user_prompt
+    assert "CTX-2: 이" in user_prompt
+    assert "CTX-1: 삼" in user_prompt
+    assert "TARGET: 사" in user_prompt
+    assert "CTX+1: 오" in user_prompt
+    assert "CTX+2: 육" in user_prompt
+    assert "CTX+3: 칠" in user_prompt
+    assert "영" not in user_prompt
+    assert "팔" not in user_prompt
+
+
 def test_translate_batches_and_keeps_alignment(monkeypatch) -> None:
     batch_calls: list[list[str]] = []
     monkeypatch.setattr(
@@ -18,9 +45,23 @@ def test_translate_batches_and_keeps_alignment(monkeypatch) -> None:
         lambda *_args, **_kwargs: (object(), object()),
     )
 
-    def fake_run(_tokenizer: object, _model: object, inputs: list[str]) -> list[str]:
-        batch_calls.append(inputs[:])
-        return [f"EN:{txt}" for txt in inputs]
+    def fake_run(
+        _tokenizer: object,
+        _model: object,
+        messages_batch: list[list[dict[str, str]]],
+        max_new_tokens: int,
+    ) -> list[str]:
+        assert max_new_tokens == TranscriberConfig().translation_max_new_tokens
+        targets = [
+            next(
+                line.split(": ", 1)[1]
+                for line in messages[1]["content"].splitlines()
+                if line.startswith("TARGET: ")
+            )
+            for messages in messages_batch
+        ]
+        batch_calls.append(targets[:])
+        return [f"EN:{txt}" for txt in targets]
 
     monkeypatch.setattr("meeting_transcriber.translate._run_translation_batch", fake_run)
 
@@ -52,7 +93,15 @@ def test_translate_skips_whitespace_segments(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "meeting_transcriber.translate._run_translation_batch",
-        lambda _tokenizer, _model, inputs: [f"EN:{txt}" for txt in inputs],
+        lambda _tokenizer, _model, messages_batch, max_new_tokens: [
+            "EN:"
+            + next(
+                line.split(": ", 1)[1]
+                for line in messages[1]["content"].splitlines()
+                if line.startswith("TARGET: ")
+            )
+            for messages in messages_batch
+        ],
     )
 
     segments = [
@@ -60,9 +109,37 @@ def test_translate_skips_whitespace_segments(monkeypatch) -> None:
         Segment(1.0, 2.0, "\n"),
         Segment(2.0, 3.0, "정상"),
     ]
-    out = translate_segments(segments, TranscriberConfig(), batch_size=8)
+    out = translate_segments(segments, TranscriberConfig(), batch_size=1)
 
     assert [item.english for item in out] == ["", "", "EN:정상"]
+
+
+def test_clean_translation_output_strips_labels_and_quotes() -> None:
+    assert translate._clean_translation_output('English: "Hello there"') == "Hello there"
+    assert translate._clean_translation_output("Translation:\nMeeting starts") == "Meeting starts"
+    assert translate._clean_translation_output("<think>reasoning</think>\nHello") == "Hello"
+
+
+def test_render_chat_prompt_disables_thinking_when_supported() -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeTokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            captured["messages"] = messages
+            captured["kwargs"] = kwargs
+            return "prompt"
+
+    prompt = translate._render_chat_prompt(
+        _FakeTokenizer(),
+        [{"role": "user", "content": "TARGET: 안녕하세요"}],
+    )
+
+    assert prompt == "prompt"
+    assert captured["kwargs"] == {
+        "tokenize": False,
+        "add_generation_prompt": True,
+        "enable_thinking": False,
+    }
 
 
 def test_load_translation_model_retries_snapshot_cache_error(monkeypatch, tmp_path: Path) -> None:
@@ -83,7 +160,13 @@ def test_load_translation_model_retries_snapshot_cache_error(monkeypatch, tmp_pa
                 )
             assert args[0] == str(model_dir)
             assert kwargs.get("local_files_only") is True
-            return object()
+            assert kwargs.get("trust_remote_code") is True
+            return types.SimpleNamespace(
+                pad_token=None,
+                pad_token_id=None,
+                eos_token="<eos>",
+                eos_token_id=7,
+            )
 
     class _FakeLoadedModel:
         def eval(self) -> None:
@@ -97,11 +180,12 @@ def test_load_translation_model_retries_snapshot_cache_error(monkeypatch, tmp_pa
             cls.calls += 1
             assert args[0] == str(model_dir)
             assert kwargs.get("local_files_only") is True
+            assert kwargs.get("trust_remote_code") is True
             return _FakeLoadedModel()
 
     fake_transformers = types.SimpleNamespace(
-        MarianTokenizer=_FakeTokenizer,
-        MarianMTModel=_FakeModel,
+        AutoTokenizer=_FakeTokenizer,
+        AutoModelForCausalLM=_FakeModel,
     )
     fake_hf_hub = types.SimpleNamespace(
         snapshot_download=lambda **kwargs: snapshot_calls.append(kwargs)
@@ -111,6 +195,10 @@ def test_load_translation_model_retries_snapshot_cache_error(monkeypatch, tmp_pa
     monkeypatch.setattr(
         "meeting_transcriber.translate._translation_model_dir",
         lambda _model_name: model_dir,
+    )
+    monkeypatch.setattr(
+        "meeting_transcriber.translate._translation_model_load_kwargs",
+        lambda: {"trust_remote_code": True},
     )
     translate.clear_translation_cache()
 
@@ -152,7 +240,13 @@ def test_load_translation_model_uses_local_cache_when_hub_blocked(
                 )
             assert args[0] == str(model_dir)
             assert kwargs.get("local_files_only") is True
-            return object()
+            assert kwargs.get("trust_remote_code") is True
+            return types.SimpleNamespace(
+                pad_token=None,
+                pad_token_id=None,
+                eos_token="<eos>",
+                eos_token_id=7,
+            )
 
     class _FakeLoadedModel:
         def eval(self) -> None:
@@ -166,11 +260,12 @@ def test_load_translation_model_uses_local_cache_when_hub_blocked(
             cls.calls += 1
             assert args[0] == str(model_dir)
             assert kwargs.get("local_files_only") is True
+            assert kwargs.get("trust_remote_code") is True
             return _FakeLoadedModel()
 
     fake_transformers = types.SimpleNamespace(
-        MarianTokenizer=_FakeTokenizer,
-        MarianMTModel=_FakeModel,
+        AutoTokenizer=_FakeTokenizer,
+        AutoModelForCausalLM=_FakeModel,
     )
     fake_hf_hub = types.SimpleNamespace(
         snapshot_download=lambda **_kwargs: (_ for _ in ()).throw(
@@ -182,6 +277,10 @@ def test_load_translation_model_uses_local_cache_when_hub_blocked(
     monkeypatch.setattr(
         "meeting_transcriber.translate._translation_model_dir",
         lambda _model_name: model_dir,
+    )
+    monkeypatch.setattr(
+        "meeting_transcriber.translate._translation_model_load_kwargs",
+        lambda: {"trust_remote_code": True},
     )
     translate.clear_translation_cache()
 

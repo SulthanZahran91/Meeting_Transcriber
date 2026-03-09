@@ -6,7 +6,7 @@ import typer
 from typer.testing import CliRunner
 
 from meeting_transcriber import cli
-from meeting_transcriber.config import TranscriberConfig
+from meeting_transcriber.config import DEFAULT_OUTPUT_FORMAT, DEFAULT_TRANSLATION_MODEL, TranscriberConfig
 from meeting_transcriber.hardware import HardwareProfile, ModelRecommendation
 
 
@@ -78,6 +78,8 @@ def test_single_file_invokes_processing_once(monkeypatch, tmp_path: Path) -> Non
         calls["count"] += 1
         assert input_path == in_file
         assert config.whisper_model == "medium"
+        assert config.output_format == DEFAULT_OUTPUT_FORMAT
+        assert config.translation_model == DEFAULT_TRANSLATION_MODEL
         return tmp_path / "meeting.html"
 
     monkeypatch.setattr(cli, "_process_one_file", fake_process)

@@ -42,7 +42,7 @@ Install translation backend (PyTorch):
 uv sync --extra gpu
 ```
 
-Note: translation currently requires PyTorch. If PyTorch is missing, run with `--no-translate` or install the extra above.
+Note: translation currently requires PyTorch. The default translator is `Qwen/Qwen3.5-4B`, so GPU inference and healthy RAM/VRAM are still recommended if you want the accuracy-first default path. If PyTorch is missing, run with `--no-translate` or install the extra above.
 ASR hardware auto-detection checks PyTorch first and falls back to `nvidia-smi` on NVIDIA systems, so `auto` can still pick CUDA for Whisper-only runs.
 
 ## Quickstart
@@ -58,6 +58,8 @@ Single file:
 ```bash
 uv run meeting-transcriber transcribe ./meeting.mp4
 ```
+
+The default output format is now `srt`.
 
 Batch directory:
 
@@ -118,11 +120,20 @@ Forced model/device options are honored. Risky combinations print warnings.
 
 ## Outputs
 
-Default output path is `./output`.
+Default output path is `./output`. Default output format is `srt`.
 
 - `html`: side-by-side Korean and English table with metadata header.
 - `markdown`: `Time | Korean | English` table.
 - `srt`: English subtitles and an additional Korean file with `.ko.srt` suffix.
+
+## Translation model
+
+Default translation model: `Qwen/Qwen3.5-4B`
+
+- The translator uses a 7-part context window for each subtitle segment: the target segment, 3 segments before it, and 3 segments after it.
+- Translation is generation-based and optimized for accuracy rather than throughput.
+- Qwen3.5 thinking mode is disabled in the translation prompt path so the model returns direct subtitle text instead of reasoning traces.
+- `transformers>=5.3.0` is required for the current default Qwen3.5 setup.
 
 Example:
 
@@ -171,6 +182,10 @@ Edit `glossary.json`:
 `Translation backend requires PyTorch`:
 - Run `uv sync --extra gpu`.
 - Or use `--no-translate`.
+
+`Translation model ran out of memory`:
+- The default Qwen3.5 translator is still accuracy-first and relatively heavy.
+- Use a machine with more RAM/VRAM, or switch `translation_model` to a smaller checkpoint in code/config.
 
 `Model download failed`:
 - Check internet access, retry once, then rerun after cache is populated.

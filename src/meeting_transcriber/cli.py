@@ -10,7 +10,11 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from meeting_transcriber.config import TranscriberConfig, resolve_auto_config
+from meeting_transcriber.config import (
+    DEFAULT_OUTPUT_FORMAT,
+    TranscriberConfig,
+    resolve_auto_config,
+)
 from meeting_transcriber.extract import extract_audio
 from meeting_transcriber.formatter import format_output
 from meeting_transcriber.glossary import apply_glossary
@@ -49,7 +53,11 @@ def transcribe_cmd(
     compute_type: str = typer.Option(
         "auto", "--compute-type", help="Compute type (auto/int8/float16/float32)"
     ),
-    format: str = typer.Option("html", "--format", help="Output format (html/markdown/srt)"),
+    format: str = typer.Option(
+        DEFAULT_OUTPUT_FORMAT,
+        "--format",
+        help="Output format (html/markdown/srt)",
+    ),
     output_dir: Path = typer.Option(Path("output"), "--output-dir", help="Output directory"),
     glossary: Path = typer.Option(Path("glossary.json"), "--glossary", help="Glossary path"),
     no_translate: bool = typer.Option(False, "--no-translate", help="Skip English translation"),

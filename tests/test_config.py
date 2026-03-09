@@ -1,6 +1,12 @@
 from pathlib import Path
 
-from meeting_transcriber.config import TranscriberConfig, resolve_auto_config
+from meeting_transcriber.config import (
+    DEFAULT_OUTPUT_FORMAT,
+    DEFAULT_TRANSLATION_CONTEXT_WINDOW,
+    DEFAULT_TRANSLATION_MODEL,
+    TranscriberConfig,
+    resolve_auto_config,
+)
 from meeting_transcriber.hardware import ModelRecommendation
 
 
@@ -50,3 +56,10 @@ def test_resolve_auto_config_preserves_manual_values() -> None:
     assert resolved.compute_type == "float16"
     assert resolved.beam_size == 7
 
+
+def test_transcriber_config_defaults_match_accuracy_first_translation() -> None:
+    cfg = TranscriberConfig()
+
+    assert cfg.translation_model == DEFAULT_TRANSLATION_MODEL
+    assert cfg.output_format == DEFAULT_OUTPUT_FORMAT
+    assert cfg.translation_context_window == DEFAULT_TRANSLATION_CONTEXT_WINDOW

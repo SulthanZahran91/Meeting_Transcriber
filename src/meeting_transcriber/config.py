@@ -5,6 +5,11 @@ from pathlib import Path
 
 from meeting_transcriber.hardware import ModelRecommendation
 
+DEFAULT_TRANSLATION_MODEL = "Qwen/Qwen3.5-4B"
+DEFAULT_OUTPUT_FORMAT = "srt"
+DEFAULT_TRANSLATION_CONTEXT_WINDOW = 3
+DEFAULT_TRANSLATION_MAX_NEW_TOKENS = 256
+
 
 @dataclass(frozen=True)
 class TranscriberConfig:
@@ -13,12 +18,14 @@ class TranscriberConfig:
     compute_type: str = "auto"
     beam_size: int = 5
     language: str = "ko"
-    translation_model: str = "Helsinki-NLP/opus-mt-ko-en"
-    output_format: str = "html"
+    translation_model: str = DEFAULT_TRANSLATION_MODEL
+    output_format: str = DEFAULT_OUTPUT_FORMAT
     output_dir: Path = Path("output")
     glossary_path: Path = Path("glossary.json")
     vad_filter: bool = True
     max_segment_length: int = 500
+    translation_context_window: int = DEFAULT_TRANSLATION_CONTEXT_WINDOW
+    translation_max_new_tokens: int = DEFAULT_TRANSLATION_MAX_NEW_TOKENS
 
 
 def resolve_auto_config(
@@ -50,5 +57,6 @@ def resolve_auto_config(
         glossary_path=config.glossary_path,
         vad_filter=config.vad_filter,
         max_segment_length=config.max_segment_length,
+        translation_context_window=config.translation_context_window,
+        translation_max_new_tokens=config.translation_max_new_tokens,
     )
-
