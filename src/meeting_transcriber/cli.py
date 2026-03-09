@@ -12,6 +12,7 @@ from rich.panel import Panel
 
 from meeting_transcriber.config import (
     DEFAULT_OUTPUT_FORMAT,
+    DEFAULT_TRANSLATION_MODEL,
     TranscriberConfig,
     resolve_auto_config,
 )
@@ -19,6 +20,7 @@ from meeting_transcriber.extract import extract_audio
 from meeting_transcriber.formatter import format_output
 from meeting_transcriber.glossary import apply_glossary
 from meeting_transcriber.hardware import detect_hardware, print_hardware_summary, recommend_config
+from meeting_transcriber.postprocess import postprocess_segments
 from meeting_transcriber.transcribe import Segment, transcribe
 from meeting_transcriber.translate import TranslatedSegment, translate_segments
 
@@ -37,6 +39,19 @@ SUPPORTED_EXTENSIONS = {
     ".avi",
     ".webm",
 }
+
+CUDA_RUNTIME_ERROR_TOKENS = (
+    "cublas",
+    "cudnn",
+    "cudart",
+    "cufft",
+    "curand",
+    "cusolver",
+    "cusparse",
+    "libcuda",
+    "libcublas",
+    "libcudnn",
+)
 
 
 @app.callback()
@@ -60,6 +75,11 @@ def transcribe_cmd(
     ),
     output_dir: Path = typer.Option(Path("output"), "--output-dir", help="Output directory"),
     glossary: Path = typer.Option(Path("glossary.json"), "--glossary", help="Glossary path"),
+    translation_model: str = typer.Option(
+        DEFAULT_TRANSLATION_MODEL,
+        "--translation-model",
+        help="Translation model repo ID or local path",
+    ),
     no_translate: bool = typer.Option(False, "--no-translate", help="Skip English translation"),
     batch: Optional[Path] = typer.Option(
         None, "--batch", help="Process all supported files in a directory"
@@ -92,6 +112,7 @@ def transcribe_cmd(
             output_format=format,
             output_dir=output_dir,
             glossary_path=glossary,
+            translation_model=translation_model,
         ),
         recommendation,
     )
@@ -187,8 +208,11 @@ def _process_one_file(
     temp_audio: Optional[Path] = None
     try:
         temp_audio = extract_audio(input_path, output_path=None, console=console)
-        segments = _transcribe_with_cuda_fallback(temp_audio, config)
-        translated = _translate_pipeline(segments, config, no_translate=no_translate)
+        segments, runtime_config = _transcribe_with_cuda_fallback(temp_audio, config)
+        segments = postprocess_segments(
+            segments, max_segment_length=config.max_segment_length
+        )
+        translated = _translate_pipeline(segments, runtime_config, no_translate=no_translate)
 
         suffix = {"html": ".html", "markdown": ".md", "srt": ".srt"}[config.output_format]
         output_path = config.output_dir / f"{input_path.stem}{suffix}"
@@ -196,7 +220,10 @@ def _process_one_file(
         metadata = {
             "source": input_path.name,
             "date": datetime.now(timezone.utc).isoformat(),
-            "model": f"{config.whisper_model} ({config.device}/{config.compute_type})",
+            "model": (
+                f"{runtime_config.whisper_model} "
+                f"({runtime_config.device}/{runtime_config.compute_type})"
+            ),
             "processing_time": f"{elapsed:.1f}s",
         }
         final_path = format_output(
@@ -214,16 +241,41 @@ def _process_one_file(
             temp_audio.unlink(missing_ok=True)
 
 
-def _transcribe_with_cuda_fallback(audio_path: Path, config: TranscriberConfig) -> list[Segment]:
+def _transcribe_with_cuda_fallback(
+    audio_path: Path, config: TranscriberConfig
+) -> tuple[list[Segment], TranscriberConfig]:
     try:
-        return transcribe(audio_path, config, console=console)
+        return transcribe(audio_path, config, console=console), config
     except RuntimeError as exc:
-        msg = str(exc).lower()
-        if config.device == "cuda" and "out of memory" in msg:
-            console.print("[yellow]CUDA OOM detected. Retrying transcription on CPU/int8...[/yellow]")
+        retry_reason = _cuda_cpu_fallback_reason(config, exc)
+        if retry_reason is not None:
+            console.print(f"[yellow]{retry_reason} Retrying transcription on CPU/int8...[/yellow]")
             cpu_config = replace(config, device="cpu", compute_type="int8")
-            return transcribe(audio_path, cpu_config, console=console)
+            return transcribe(audio_path, cpu_config, console=console), cpu_config
         raise
+
+
+def _cuda_cpu_fallback_reason(config: TranscriberConfig, exc: RuntimeError) -> str | None:
+    if config.device != "cuda":
+        return None
+
+    message = str(exc).lower()
+    if "out of memory" in message:
+        return "CUDA OOM detected."
+    if any(token in message for token in CUDA_RUNTIME_ERROR_TOKENS):
+        return "CUDA runtime/library issue detected."
+    if "cuda" in message and any(
+        token in message
+        for token in (
+            "cannot be loaded",
+            "could not load",
+            "failed to load",
+            "not found",
+            "module could not be found",
+        )
+    ):
+        return "CUDA runtime/library issue detected."
+    return None
 
 
 def _translate_pipeline(
@@ -317,6 +369,7 @@ def _print_resolved_config(config: TranscriberConfig) -> None:
                     f"Beam size: {config.beam_size}",
                     f"Language: {config.language}",
                     f"Translation model: {config.translation_model}",
+                    f"Translation context: +/-{config.translation_context_window} segments",
                     f"Output format: {config.output_format}",
                     f"Output dir: {config.output_dir}",
                     f"Glossary path: {config.glossary_path}",

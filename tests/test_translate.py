@@ -291,3 +291,23 @@ def test_load_translation_model_uses_local_cache_when_hub_blocked(
 
     assert _FakeTokenizer.calls == 2
     assert _FakeModel.calls == 1
+
+
+def test_translation_model_load_kwargs_use_dtype(monkeypatch) -> None:
+    fake_torch = types.SimpleNamespace(
+        float32="float32",
+        float16="float16",
+        bfloat16="bfloat16",
+        cuda=types.SimpleNamespace(
+            is_available=lambda: False,
+            is_bf16_supported=lambda: False,
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+
+    kwargs = translate._translation_model_load_kwargs()
+
+    assert kwargs == {
+        "trust_remote_code": True,
+        "dtype": "float32",
+    }

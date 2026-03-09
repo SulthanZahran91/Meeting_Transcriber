@@ -36,14 +36,35 @@ Base install:
 uv sync
 ```
 
-Install translation backend (PyTorch):
+Install optional PyTorch backend:
 
 ```bash
 uv sync --extra gpu
 ```
 
 Note: translation currently requires PyTorch. The default translator is `Qwen/Qwen3.5-4B`, so GPU inference and healthy RAM/VRAM are still recommended if you want the accuracy-first default path. If PyTorch is missing, run with `--no-translate` or install the extra above.
-ASR hardware auto-detection checks PyTorch first and falls back to `nvidia-smi` on NVIDIA systems, so `auto` can still pick CUDA for Whisper-only runs.
+
+### GPU runtime requirements
+
+`uv sync --extra gpu` installs Python-side GPU support such as PyTorch. It does not install the host NVIDIA driver or CUDA runtime libraries required for Whisper GPU inference.
+
+Whisper ASR in this project runs through `faster-whisper`, which uses CTranslate2 for inference. That means Whisper GPU support is separate from the PyTorch translation backend.
+
+For `--device cuda` or `--device auto` to run Whisper on GPU, the machine also needs:
+
+- An NVIDIA GPU supported by CTranslate2.
+- An NVIDIA driver compatible with the installed CUDA runtime.
+- CUDA 12 runtime libraries available to the OS loader.
+- The libraries required by the current `faster-whisper`/CTranslate2 stack:
+  `cuBLAS` for CUDA 12 and `cuDNN 9` for CUDA 12.
+- On Windows, the Microsoft Visual C++ runtime.
+- `nvidia-smi` working if you want hardware auto-detection to discover the GPU reliably.
+
+For this repo's current stack (`faster-whisper` with `ctranslate2 4.7.1` in `uv.lock`), missing DLL errors such as `cublas64_12.dll` usually mean the CUDA 12 runtime/toolkit is missing from the machine, mismatched with the installed driver/runtime stack, or not available on `PATH`.
+
+If you intentionally target older CUDA/cuDNN combinations, you may need to pin an older `ctranslate2` version instead of using the current default stack.
+
+ASR hardware auto-detection checks PyTorch first and falls back to `nvidia-smi` on NVIDIA systems, so `auto` can still pick CUDA for Whisper-only runs. Detection success does not guarantee that all CUDA libraries needed by `faster-whisper` can actually be loaded at runtime. If GPU detection succeeds but CUDA libraries are unavailable at runtime, transcription falls back to CPU/int8.
 
 ## Quickstart
 
@@ -97,6 +118,7 @@ extract-audio --batch DIR
 --format html|markdown|srt
 --output-dir PATH
 --glossary PATH
+--translation-model REPO_OR_PATH
 --no-translate
 --batch DIR
 --show-hardware
@@ -141,6 +163,12 @@ Example:
 uv run meeting-transcriber transcribe ./meeting.mp4 --format srt
 ```
 
+Use a different translation checkpoint when the default 4B model is too large or too slow to download:
+
+```bash
+uv run meeting-transcriber transcribe ./meeting.mp4 --translation-model Qwen/Qwen2.5-1.5B-Instruct
+```
+
 ## Glossary customization
 
 Edit `glossary.json`:
@@ -175,6 +203,11 @@ Edit `glossary.json`:
 - Try `--model small` or `--model tiny`.
 - On CUDA, retry with `--device cpu`.
 
+`Library cublas64_12.dll is not found or cannot be loaded`:
+- GPU detection succeeded, but the CUDA runtime libraries needed by Whisper were not available at runtime.
+- Install or repair the NVIDIA/CUDA 12 runtime on the host machine and ensure the CUDA `bin` directory is on `PATH`.
+- If you do not need GPU inference, run with `--device cpu`.
+
 `--show-hardware` does not detect your NVIDIA GPU:
 - Verify the NVIDIA driver is installed and `nvidia-smi` works.
 - If Whisper GPU inference works but auto-detection is still wrong, use `--device cuda`.
@@ -185,7 +218,8 @@ Edit `glossary.json`:
 
 `Translation model ran out of memory`:
 - The default Qwen3.5 translator is still accuracy-first and relatively heavy.
-- Use a machine with more RAM/VRAM, or switch `translation_model` to a smaller checkpoint in code/config.
+- Use a machine with more RAM/VRAM, or switch to a smaller checkpoint with `--translation-model`.
 
 `Model download failed`:
 - Check internet access, retry once, then rerun after cache is populated.
+- If the default model is impractical for your machine or network, choose a smaller checkpoint with `--translation-model`.

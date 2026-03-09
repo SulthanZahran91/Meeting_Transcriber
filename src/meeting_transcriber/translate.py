@@ -149,6 +149,10 @@ def _load_translation_model(
             "Failed to import transformers. Install dependencies with `uv sync`."
         ) from exc
 
+    console.print(
+        "[cyan]If the translation model is not cached locally yet, the first run will "
+        "download it from Hugging Face. Larger checkpoints can take several minutes.[/cyan]"
+    )
     with console.status(f"Loading translation model '{config.translation_model}'..."):
         try:
             tokenizer, model = _load_translation_model_once(
@@ -235,7 +239,7 @@ def _translation_model_load_kwargs() -> dict[str, object]:
     kwargs: dict[str, object] = {"trust_remote_code": True}
     dtype = _preferred_torch_dtype()
     if dtype is not None:
-        kwargs["torch_dtype"] = dtype
+        kwargs["dtype"] = dtype
     return kwargs
 
 
