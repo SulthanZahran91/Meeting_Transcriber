@@ -124,6 +124,17 @@ def transcribe_cmd(
             raise typer.Exit(code=1)
 
 
+def extract_audio_cmd(
+    input_file: Path = typer.Argument(..., help="Input audio/video file"),
+    output: Optional[Path] = typer.Option(None, "--output", help="Output WAV file path"),
+) -> None:
+    target = _resolve_target_files(input_file, batch=None)[0]
+    output_path = _resolve_audio_output_path(target, output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    final_path = extract_audio(target, output_path=output_path, console=console)
+    console.print(f"[green]Extracted audio:[/green] {target.name} -> {final_path}")
+
+
 def _process_one_file(
     input_path: Path, config: TranscriberConfig, no_translate: bool
 ) -> Path:
@@ -235,6 +246,21 @@ def _resolve_target_files(input_file: Optional[Path], batch: Optional[Path]) -> 
     return [input_file]
 
 
+def _resolve_audio_output_path(input_path: Path, output: Optional[Path]) -> Path:
+    if output is None:
+        if input_path.suffix.lower() == ".wav":
+            return input_path.with_name(f"{input_path.stem}.extracted.wav")
+        return input_path.with_suffix(".wav")
+
+    if output.suffix.lower() != ".wav":
+        raise typer.BadParameter("--output must end with .wav.")
+
+    if output.resolve() == input_path.resolve():
+        raise typer.BadParameter("Refusing to overwrite the input file. Choose a different --output.")
+
+    return output
+
+
 def _print_resolved_config(config: TranscriberConfig) -> None:
     console.print(
         Panel(
@@ -258,6 +284,7 @@ def _print_resolved_config(config: TranscriberConfig) -> None:
 
 
 app.command(name="transcribe")(transcribe_cmd)
+app.command(name="extract-audio")(extract_audio_cmd)
 
 
 if __name__ == "__main__":

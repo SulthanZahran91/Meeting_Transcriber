@@ -71,9 +71,17 @@ Korean-only transcript:
 uv run meeting-transcriber transcribe ./meeting.mp4 --no-translate
 ```
 
+Extract audio only:
+
+```bash
+uv run meeting-transcriber extract-audio ./meeting.mp4
+```
+
 ## CLI options
 
 ```text
+extract-audio INPUT_FILE [--output PATH]
+
 --model auto|tiny|small|medium|large-v3
 --device auto|cpu|cuda
 --compute-type auto|int8|float16|float32
@@ -84,6 +92,8 @@ uv run meeting-transcriber transcribe ./meeting.mp4 --no-translate
 --batch DIR
 --show-hardware
 ```
+
+`extract-audio` writes a 16 kHz mono WAV file. By default it saves next to the input as `<name>.wav`; if the input is already `.wav`, it writes `<name>.extracted.wav` to avoid overwriting the source.
 
 ## Hardware auto-selection
 
