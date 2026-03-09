@@ -77,10 +77,17 @@ Extract audio only:
 uv run meeting-transcriber extract-audio ./meeting.mp4
 ```
 
+Extract audio for a directory:
+
+```bash
+uv run meeting-transcriber extract-audio --batch ./recordings
+```
+
 ## CLI options
 
 ```text
 extract-audio INPUT_FILE [--output PATH]
+extract-audio --batch DIR
 
 --model auto|tiny|small|medium|large-v3
 --device auto|cpu|cuda
@@ -93,7 +100,7 @@ extract-audio INPUT_FILE [--output PATH]
 --show-hardware
 ```
 
-`extract-audio` writes a 16 kHz mono WAV file. By default it saves next to the input as `<name>.wav`; if the input is already `.wav`, it writes `<name>.extracted.wav` to avoid overwriting the source.
+`extract-audio` writes a 16 kHz mono WAV file. By default it saves next to the input as `<name>.wav`; if the input is already `.wav`, it writes `<name>.extracted.wav` to avoid overwriting the source. In batch mode, it applies the same naming rule to every supported file in the target directory. `--output` is single-file only.
 
 ## Hardware auto-selection
 

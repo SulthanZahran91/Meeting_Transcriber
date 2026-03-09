@@ -207,6 +207,75 @@ def test_extract_audio_command_avoids_overwriting_wav_input(monkeypatch, tmp_pat
     assert (tmp_path / "meeting.extracted.wav").exists()
 
 
+def test_extract_audio_command_batch_processes_all_files(
+    monkeypatch, tmp_path: Path
+) -> None:
+    first = tmp_path / "a.mp4"
+    second = tmp_path / "b.wav"
+    first.write_bytes(b"video")
+    second.write_bytes(b"wav")
+    captured: list[tuple[Path, Path]] = []
+
+    def fake_extract_audio(
+        source: Path, output_path: Path | None = None, console: Console | None = None
+    ) -> Path:
+        assert output_path is not None
+        captured.append((source, output_path))
+        output_path.write_bytes(b"wav")
+        return output_path
+
+    monkeypatch.setattr(cli, "extract_audio", fake_extract_audio)
+
+    result = runner.invoke(cli.app, ["extract-audio", "--batch", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert captured == [
+        (first, tmp_path / "a.wav"),
+        (second, tmp_path / "b.extracted.wav"),
+    ]
+
+
+def test_extract_audio_command_batch_continues_after_failure(
+    monkeypatch, tmp_path: Path
+) -> None:
+    first = tmp_path / "a.mp4"
+    second = tmp_path / "b.mp3"
+    first.write_bytes(b"video")
+    second.write_bytes(b"audio")
+    calls: list[Path] = []
+
+    def fake_extract_audio(
+        source: Path, output_path: Path | None = None, console: Console | None = None
+    ) -> Path:
+        calls.append(source)
+        assert output_path is not None
+        if source == first:
+            raise RuntimeError("boom")
+        output_path.write_bytes(b"wav")
+        return output_path
+
+    monkeypatch.setattr(cli, "extract_audio", fake_extract_audio)
+
+    result = runner.invoke(cli.app, ["extract-audio", "--batch", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert calls == [first, second]
+
+
+def test_extract_audio_command_rejects_output_with_batch(tmp_path: Path) -> None:
+    input_path = tmp_path / "meeting.mp4"
+    input_path.write_bytes(b"video")
+    output_path = tmp_path / "meeting.wav"
+
+    result = runner.invoke(
+        cli.app,
+        ["extract-audio", "--batch", str(tmp_path), "--output", str(output_path)],
+    )
+
+    assert result.exit_code == 2
+    assert "Use --output only with a single INPUT_FILE." in result.output
+
+
 def test_resolve_audio_output_path_rejects_non_wav_output(tmp_path: Path) -> None:
     input_path = tmp_path / "meeting.mp4"
     input_path.write_bytes(b"video")

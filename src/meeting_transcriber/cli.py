@@ -125,14 +125,51 @@ def transcribe_cmd(
 
 
 def extract_audio_cmd(
-    input_file: Path = typer.Argument(..., help="Input audio/video file"),
+    input_file: Optional[Path] = typer.Argument(None, help="Input audio/video file"),
     output: Optional[Path] = typer.Option(None, "--output", help="Output WAV file path"),
+    batch: Optional[Path] = typer.Option(
+        None, "--batch", help="Extract audio for all supported files in a directory"
+    ),
 ) -> None:
-    target = _resolve_target_files(input_file, batch=None)[0]
-    output_path = _resolve_audio_output_path(target, output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    final_path = extract_audio(target, output_path=output_path, console=console)
-    console.print(f"[green]Extracted audio:[/green] {target.name} -> {final_path}")
+    _validate_input_args(input_file, batch, show_hardware=False)
+    if batch is not None and output is not None:
+        raise typer.BadParameter("Use --output only with a single INPUT_FILE.")
+
+    files = _resolve_target_files(input_file, batch)
+    if not files:
+        raise typer.Exit(code=1)
+
+    started_all = time.perf_counter()
+    successes = 0
+    failures = 0
+
+    for target in files:
+        try:
+            output_path = _resolve_audio_output_path(
+                target,
+                output if batch is None else None,
+            )
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            final_path = extract_audio(target, output_path=output_path, console=console)
+            console.print(f"[green]Extracted audio:[/green] {target.name} -> {final_path}")
+            successes += 1
+        except Exception as exc:
+            console.print(f"[red]Failed:[/red] {target}: {exc}")
+            failures += 1
+            if batch is None:
+                raise typer.Exit(code=1)
+
+    if batch is not None:
+        total_elapsed = time.perf_counter() - started_all
+        console.print(
+            Panel(
+                f"Processed: {len(files)}\nSuccess: {successes}\nFailed: {failures}\nElapsed: {total_elapsed:.1f}s",
+                title="Batch Summary",
+                expand=False,
+            )
+        )
+        if failures > 0:
+            raise typer.Exit(code=1)
 
 
 def _process_one_file(
